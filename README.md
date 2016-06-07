@@ -1,6 +1,6 @@
-## a tool for managing reuseable code segments.
+## A tool for managing reusable code segments.
 
-### have following features:  
+### Has following features:  
 1. each segment has a category and some tags (8 tags max).
 2. can be searched by tags and category.
 3. can list categories and tags.
