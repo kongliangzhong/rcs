@@ -20,9 +20,9 @@ var segFilePath = defaultCodeBase + segFileName
 
 // keep things simple: category should be one world only. tags can have multiple world, concat by comma(,).
 func main() {
-    // commands: 1. rcs add -t tag1,tag2 -c category content
+    // commands: 1. rcs add -t tag1,tag2 -c category -m description content
     // 2. rcs remove id
-    // 3. rcs update -i id [-t tag1,tag2 [-c category]] content
+    // 3. rcs update -i id [-t tag1,tag2 [-c category] [-m desc]] content
     // 4. rcs search [-c category] tag1 tag2
     // 5. rcs list [-c category [-t t1,t2]]
     if len(os.Args) <= 1 {
@@ -32,16 +32,16 @@ func main() {
 
     //fmt.Println("args:", os.Args)
 
-    id, cate, content, tags := parseArgs(os.Args)
+    id, cate, content, tags, desc := parseArgs(os.Args)
     //fmt.Printf("id: %s, cate: %s, tags: %s, content: %s", id, cate, tags, content)
     switch os.Args[1] {
     case "add":
-        err := add(cate, tags, content)
+        err := add(cate, tags, content, desc)
         if err != nil {
             fmt.Println("error:", err)
         }
     case "update":
-        update(id, cate, tags, content)
+        update(id, cate, tags, content, desc)
     case "list":
         list(cate, tags)
     case "search":
@@ -55,7 +55,7 @@ func main() {
     }
 }
 
-func parseArgs(args []string) (id string, cate string, content string, tagStr string) {
+func parseArgs(args []string) (id string, cate string, content string, tagStr string, desc string) {
     var ind = func(s string) int {
         for i, a := range args {
             if a == s {
@@ -65,7 +65,7 @@ func parseArgs(args []string) (id string, cate string, content string, tagStr st
         return -1
     }
 
-    var hasId, hasCate, hasTags bool
+    //var hasId, hasCate, hasTags, hasDesc bool
     var argsLen = 2
     var getParam = func(flag string) string {
         if ind_flag := ind(flag); ind_flag > 0 {
@@ -73,26 +73,30 @@ func parseArgs(args []string) (id string, cate string, content string, tagStr st
             if len(args) <= ind_flag+1 {
                 fmt.Println("missing parameter value for ", flag)
             }
-            switch flag {
-            case "-i":
-                hasId = true
-                argsLen += 2
-            case "-c":
-                hasCate = true
-                argsLen += 2
-            case "-t":
-                hasTags = true
-                argsLen += 2
-            }
+            argsLen += 2
+            // switch flag {
+            // case "-i":
+            //     hasId = true
+            //     argsLen += 2
+            // case "-c":
+            //     hasCate = true
+            //     argsLen += 2
+            // case "-t":
+            //     hasTags = true
+            //     argsLen += 2
+            // case "-m":
+            //     hasDesc = true
+            //     argsLen += 2
+            // }
             return args[ind_flag+1]
         }
         return ""
     }
 
-    id = strings.ToLower(getParam("-i"))
+    id = getParam("-i")
     cate = strings.ToLower(getParam("-c"))
     tagStr = strings.ToLower(getParam("-t"))
-
+    desc = getParam("-m")
     //fmt.Printf("args.len: %d, argsLen: %d", len(args), argsLen)
     if len(args) > argsLen {
         content = args[argsLen]
@@ -105,8 +109,8 @@ func printUsage(args []string) {
     fmt.Printf("Usage: %s add|update|list|search|remove|help", args[0])
 }
 
-// storage format: id|catetory|t1,t2...|content_base64
-func add(cate string, tagStr string, content string) error {
+// storage format: id|catetory|t1,t2...|desc_base64|content_base64
+func add(cate string, tagStr string, content string, desc string) error {
     content = strings.TrimSpace(content)
     if content == "" {
         return errors.New("content can not be empty")
@@ -120,17 +124,18 @@ func add(cate string, tagStr string, content string) error {
         return errors.New("category and tagStr can not contains '|' charactor")
     }
 
-    content_b64 := base64.StdEncoding.EncodeToString([]byte(content))
-    if isDuplicated(segFilePath, []byte(content_b64)) {
+    descB64 := base64.StdEncoding.EncodeToString([]byte(desc))
+    contentB64 := base64.StdEncoding.EncodeToString([]byte(content))
+    if isDuplicated(segFilePath, []byte(contentB64)) {
         return errors.New("duplicated content")
     }
 
     id := uuid.NewV4().String()
-    seg := id + "|" + cate + "|" + tagStr + "|" + content_b64
+    seg := id + "|" + cate + "|" + tagStr + "|" + descB64 + "|" + contentB64
     return save(seg)
 }
 
-func update(id string, cate string, tagStr string, content string) error {
+func update(id string, cate string, tagStr string, content string, desc string) error {
     return nil
 }
 
@@ -139,33 +144,63 @@ func list(cate string, tagStr string) {
     // matches := grepFile(segFilePath, cate, tags)
 }
 
+func parseSegLine(line string) (id, cate, tagStr, desc, content string) {
+    flds := strings.Split(line, "|")
+    if len(flds) != 5 {
+        fmt.Println("invalid segment format: " + line)
+    }
+    id = flds[0]
+    cate = flds[1]
+    tagStr = flds[2]
+    desc = flds[3]
+    content = flds[4]
+    return
+}
+
 func search(cate string, tagStr string) {
     var prtContent = func(line string) {
-        flds := strings.Split(line, "|")
-        contentB64 := flds[3]
-        bs, err := base64.StdEncoding.DecodeString(contentB64)
-        if err != nil {
-            fmt.Println("error:", err)
-        }
-        fmt.Println(string(bs))
-    }
-
-    var prtFull = func(ind int, line string) {
-        fmt.Println(resultDelimiter)
-        flds := strings.Split(line, "|")
-        id := flds[0]
-        cate := flds[1]
-        tagStr := flds[2]
-        contentB64 := flds[3]
+        _, _, _, _, contentB64 := parseSegLine(line)
         bs, err := base64.StdEncoding.DecodeString(contentB64)
         if err != nil {
             fmt.Println("error:", err)
         }
         content := string(bs)
+        fmt.Println(content)
+    }
+
+    var prtFull = func(ind int, line string) {
+        fmt.Println(resultDelimiter)
+        // flds := strings.Split(line, "|")
+        // id := flds[0]
+        // cate := flds[1]
+        // tagStr := flds[2]
+        // contentB64 := flds[3]
+        id, cate, tagStr, descB64, contentB64 := parseSegLine(line)
+        ctBs, err := base64.StdEncoding.DecodeString(contentB64)
+        if err != nil {
+            fmt.Println("error:", err)
+        }
+        content := string(ctBs)
+
+        descBs, err := base64.StdEncoding.DecodeString(descB64)
+        if err != nil {
+            fmt.Println("error:", err)
+        }
+        desc := string(descBs)
+
         fmt.Println("      id:", id)
         fmt.Println("category:", cate)
         fmt.Println("    tags:", tagStr)
-        fmt.Println(" content:", content)
+        fmt.Println("    desc:", desc)
+        contentLines := strings.Split(content, "\n")
+        contentLabel := " content:"
+        for i, cline := range contentLines {
+            if i == 0 {
+                fmt.Println(contentLabel, cline)
+            } else {
+                fmt.Println(strings.Repeat(" ", len(contentLabel)), cline)
+            }
+        }
     }
 
     tags := strings.Split(tagStr, ",")
