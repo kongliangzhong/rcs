@@ -24,7 +24,7 @@ func main() {
     // 2. rcs remove id
     // 3. rcs update -i id [-t tag1,tag2 [-c category] [-m desc]] content
     // 4. rcs search [-c category] tag1 tag2
-    // 5. rcs list [-c category [-t t1,t2]]
+    // 5. rcs list [-c ] [-t] : list all categories or tags
     if len(os.Args) <= 1 {
         printUsage(os.Args)
         os.Exit(-1)
@@ -32,22 +32,49 @@ func main() {
 
     //fmt.Println("args:", os.Args)
 
-    id, cate, content, tags, desc := parseArgs(os.Args)
-    //fmt.Printf("id: %s, cate: %s, tags: %s, content: %s", id, cate, tags, content)
+    id, cate, content, tagStr, desc := parseArgs(os.Args)
+    //fmt.Printf("id: %s, cate: %s, tagStr: %s, content: %s", id, cate, tagStr, content)
     switch os.Args[1] {
     case "add":
-        err := add(cate, tags, content, desc)
+        err := add(cate, tagStr, content, desc)
         if err != nil {
             fmt.Println("error:", err)
         }
     case "update":
-        update(id, cate, tags, content, desc)
-    case "list":
-        list(cate, tags)
+        update(id, cate, tagStr, content, desc)
+    case "list-c":
+        listc()
+    case "list-t":
+        listt()
     case "search":
-        search(cate, tags)
+        // TODO: add alias table for search words. for example: js for javascript.
+        if tagStr == "" && content != "" {
+            flds := strings.Split(content, " ")
+            tagStr = strings.Join(flds, ",")
+            //fmt.Println("tagStr:", tagStr)
+        }
+        search(cate, tagStr)
     case "remove":
-        remove(id)
+        if id == "" && content != "" {
+            id = content
+        }
+
+        if id == "" {
+            fmt.Println("Error: id not specified.")
+            os.Exit(-1)
+        }
+
+        fmt.Println("Are you sure to remove code segment with id:" + id + "?", "  yes|no")
+        var response string
+        _, err := fmt.Scanln(&response)
+        if err != nil {
+            fmt.Println(err)
+            os.Exit(-1)
+        }
+
+        if "YES" == strings.ToUpper(response) {
+            remove(id)
+        }
     case "help":
         printUsage(os.Args)
     default:
@@ -65,7 +92,6 @@ func parseArgs(args []string) (id string, cate string, content string, tagStr st
         return -1
     }
 
-    //var hasId, hasCate, hasTags, hasDesc bool
     var argsLen = 2
     var getParam = func(flag string) string {
         if ind_flag := ind(flag); ind_flag > 0 {
@@ -74,39 +100,32 @@ func parseArgs(args []string) (id string, cate string, content string, tagStr st
                 fmt.Println("missing parameter value for ", flag)
             }
             argsLen += 2
-            // switch flag {
-            // case "-i":
-            //     hasId = true
-            //     argsLen += 2
-            // case "-c":
-            //     hasCate = true
-            //     argsLen += 2
-            // case "-t":
-            //     hasTags = true
-            //     argsLen += 2
-            // case "-m":
-            //     hasDesc = true
-            //     argsLen += 2
-            // }
             return args[ind_flag+1]
         }
         return ""
     }
 
     id = getParam("-i")
-    cate = strings.ToLower(getParam("-c"))
-    tagStr = strings.ToLower(getParam("-t"))
+    cate = getParam("-c")
+    tagStr = getParam("-t")
     desc = getParam("-m")
     //fmt.Printf("args.len: %d, argsLen: %d", len(args), argsLen)
     if len(args) > argsLen {
-        content = args[argsLen]
+        content = strings.Join(args[argsLen:], " ")
     }
 
     return
 }
 
 func printUsage(args []string) {
-    fmt.Printf("Usage: %s add|update|list|search|remove|help", args[0])
+    fmt.Printf("Usage:\n    %s add|update|list|search|remove|help\n", args[0])
+    fmt.Printf("\tadd -t tag1,tag2 -c category -m description content\n")
+    fmt.Printf("\tsearch [-c category] tag1 tag2\n")
+    fmt.Printf("\tremove id\n")
+    fmt.Printf("\tupdate -i id [-t tag1,tag2 [-c category] [-m desc]] content\n")
+    fmt.Printf("\tlist-c : list all categories\n")
+    fmt.Printf("\tlist-t : list all tags\n")
+    fmt.Println()
 }
 
 // storage format: id|catetory|t1,t2...|desc_base64|content_base64
@@ -139,9 +158,12 @@ func update(id string, cate string, tagStr string, content string, desc string) 
     return nil
 }
 
-func list(cate string, tagStr string) {
-    // tags := strings.Split(tagStr, ",")
-    // matches := grepFile(segFilePath, cate, tags)
+func listc() {
+
+}
+
+func listt() {
+
 }
 
 func parseSegLine(line string) (id, cate, tagStr, desc, content string) {
@@ -170,11 +192,6 @@ func search(cate string, tagStr string) {
 
     var prtFull = func(ind int, line string) {
         fmt.Println(resultDelimiter)
-        // flds := strings.Split(line, "|")
-        // id := flds[0]
-        // cate := flds[1]
-        // tagStr := flds[2]
-        // contentB64 := flds[3]
         id, cate, tagStr, descB64, contentB64 := parseSegLine(line)
         ctBs, err := base64.StdEncoding.DecodeString(contentB64)
         if err != nil {
@@ -225,12 +242,47 @@ func search(cate string, tagStr string) {
     }
 }
 
+// TODO: improve this method when necessary.
 func remove(id string) error {
+    f, err := os.Open(segFilePath)
+    if err != nil {
+        return err
+    }
+    defer f.Close()
+
+    scanner := bufio.NewScanner(f)
+    fLines := []string{}
+    for scanner.Scan() {
+        line := scanner.Text()
+        if strings.HasPrefix(line, id) {
+            continue;
+        }
+        fLines = append(fLines, line)
+    }
+    return replaceFile(fLines)
+}
+
+func replaceFile(lines []string) error {
+    oldFileName := segFilePath + ".old"
+    os.Remove(oldFileName)
+    err := os.Rename(segFilePath, oldFileName) // do not remove, rename this file instead.
+    if err != nil {
+        return err
+    }
+
+    f, err := os.OpenFile(segFilePath, os.O_CREATE|os.O_WRONLY, 0660)
+    if err != nil {
+        return err
+    }
+    defer f.Close()
+    for _, line := range lines {
+        f.WriteString(line + "\n")
+    }
     return nil
 }
 
 func save(seg string) error {
-    f, err := os.OpenFile(segFilePath, os.O_APPEND|os.O_WRONLY, 0660)
+    f, err := os.OpenFile(segFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
     if err != nil {
         return err
     }
@@ -239,16 +291,13 @@ func save(seg string) error {
 
     _, err = f.WriteString(seg + "\n")
     return err
-
-    // f := defaultCodeBase + segFileName
-    // return ioutil.WriteFile(f, []byte(seg), 0660)
 }
 
 func isDuplicated(file string, contentBs []byte) bool {
     f, err := os.Open(file)
     if err != nil {
         fmt.Println(err)
-        return true
+        return false
     }
     defer f.Close()
     scanner := bufio.NewScanner(f)
@@ -261,25 +310,26 @@ func isDuplicated(file string, contentBs []byte) bool {
 }
 
 func grepFile(file string, cate string, tags []string) []string {
-    var categoryMatch = func(src string, c string) bool {
+    var categoryMatch = func(cateInStore string, c string) bool {
         if c == "" {
             return true
         }
-        return strings.Contains(src, c)
+        return strings.HasPrefix(cateInStore, c)
     }
 
-    var tagsMatch = func(src string, ss []string) bool {
+    var tagsMatch = func(tagsInStore string, ss []string) bool {
         if ss == nil || len(ss) == 0 {
             return true
         }
         for _, s := range ss {
-            if !strings.Contains(src, s) {
+            if !strings.Contains(tagsInStore, strings.ToUpper(s)) { // TODO: improve this logic .
                 return false
             }
         }
         return true
     }
 
+    cate = strings.ToUpper(cate)
     res := []string{}
     f, err := os.Open(file)
     if err != nil {
@@ -291,7 +341,10 @@ func grepFile(file string, cate string, tags []string) []string {
         line := scanner.Text()
         flds := strings.Split(line, "|")
         category := flds[1]
+        category = strings.ToUpper(category)
         tagStr := flds[2]
+        tagStr = strings.ToUpper(tagStr)
+        tagStr = category + "," + tagStr
         if categoryMatch(category, cate) && tagsMatch(tagStr, tags) {
             res = append(res, line)
         }
