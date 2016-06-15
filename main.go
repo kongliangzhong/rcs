@@ -25,6 +25,7 @@ func main() {
     // 3. rcs update -i id [-t tag1,tag2 [-c category] [-m desc]] content
     // 4. rcs search [-c category] tag1 tag2
     // 5. rcs list [-c ] [-t] : list all categories or tags
+    // TOTO: 6. rcs append -i id content-to-be-appended.
     if len(os.Args) <= 1 {
         printUsage(os.Args)
         os.Exit(-1)
@@ -64,7 +65,7 @@ func main() {
             os.Exit(-1)
         }
 
-        fmt.Println("Are you sure to remove code segment with id:" + id + "?", "  yes|no")
+        fmt.Println("Are you sure to remove code segment with id(" + id + ")?", "  yes|no")
         var response string
         _, err := fmt.Scanln(&response)
         if err != nil {
