@@ -10,21 +10,22 @@ import (
     "strings"
 )
 
-const IdLen = 28
+const IdLen = 27
 
 type CodeSegment struct {
     Id, Category, Tags, Desc, Code string
 }
 
 func (cs CodeSegment) PrintToScreen() {
-    fmt.Printf("ID:%s CATEGORY:%s TAGS:%s\n", cs.Id, cs.Category, cs.Tags)
-    fmt.Printf("DESCRIPTION: %s\n", cs.Desc)
+    fmt.Printf("  ID: %s\nCATE: %s\nTAGS: %s\n", cs.Id, cs.Category, cs.Tags)
+    fmt.Printf("DESC: %s\n", cs.Desc)
     codeLines := strings.Split(cs.Code, "\n")
     for i, line := range codeLines {
         if i == 0 {
-            fmt.Println("CONTENT:", line)
+            fmt.Println("CONTENT:")
+            fmt.Println("      " + line)
         } else {
-            fmt.Println("        ", line)
+            fmt.Println("      " + line)
         }
     }
 }
@@ -151,6 +152,7 @@ func (fs *FileStore) genId(cs CodeSegment) (id string, err error) {
 
     idBytes := sha1.Sum([]byte(cs.Category + cs.Tags))
     id = base64.StdEncoding.EncodeToString(idBytes[:])
+    id = id[:len(id)-1]  //
     return
 }
 
