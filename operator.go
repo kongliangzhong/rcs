@@ -7,6 +7,7 @@ import (
     "os"
     "os/exec"
     "strings"
+    "github.com/satori/go.uuid"
 )
 
 const resultDelimiter = "--------------------------------------------------------"
@@ -76,9 +77,11 @@ func (op *Operator) Search(category string, tags string) {
         fmt.Println("Found", size, "matched code segments, print as below:")
     }
     for i, cs := range matchedCs {
-        fmt.Println(resultDelimiter)
         if i < 10 {
+            fmt.Println(resultDelimiter)
             cs.PrintToScreen()
+        } else {
+            break
         }
     }
     fmt.Println(resultDelimiter)
@@ -114,12 +117,10 @@ func (op *Operator) Merge(ids ...string) {
 
         if i == 0 {
             cate = cs.Category
-            desc = cs.Desc
-            code = cs.Code
-        } else {
-            desc = desc + "\n" + cs.Desc
-            code = code + "\n" + cs.Code
         }
+
+        desc = desc + "\n" + cs.Desc
+        code = code + "\n" + cs.Code
 
         if cs.Category != cate {
             op.err = errors.New("categorys are not equal, can not merge.")
@@ -134,12 +135,14 @@ func (op *Operator) Merge(ids ...string) {
         }
     }
 
+    desc = strings.TrimSpace(desc)
+    code = strings.TrimSpace(code)
     allTagsStr := strings.Join(allTags, ",")
     mergedCodeSegment := CodeSegment{"", cate, allTagsStr, desc, code}
-    op.Add(mergedCodeSegment)
     for _, id := range ids {
         op.Remove(id)
     }
+    op.Add(mergedCodeSegment)
 }
 
 func (op *Operator) Edit(id string) {
@@ -150,11 +153,15 @@ func (op *Operator) Edit(id string) {
     }
 
     tmpDir := os.TempDir()
-    tmpFile, err := ioutil.TempFile(tmpDir, cs.Id)
-    if err !=nil {
+    tmpFileName := uuid.NewV4().String()
+    tmpFile, err := ioutil.TempFile(tmpDir, tmpFileName)
+    if err != nil {
         op.err = err
         return
     }
+    defer tmpFile.Close()
+
+    cs.PrintToFile(tmpFile.Name())
 
     path, err := exec.LookPath("vi")
     if err != nil {
@@ -180,16 +187,16 @@ func (op *Operator) Edit(id string) {
         return
     }
 
-    fmt.Println("tmpFile: ", tmpFile.Name())
+    //fmt.Println("tmpFile: ", tmpFile.Name())
     err = (&cs).ReadFromFile(tmpFile.Name())
     if err != nil {
         op.err = err
         return
     }
-    cs.PrintToScreen()
+    //cs.PrintToScreen()
 
     oldId := cs.Id
     cs.Id = ""
-    op.Add(cs)
     op.Remove(oldId)
+    op.Add(cs)
 }

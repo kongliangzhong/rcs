@@ -2,7 +2,6 @@ package main
 
 import (
     "bufio"
-    "bytes"
     "crypto/sha1"
     "encoding/base64"
     "errors"
@@ -18,18 +17,19 @@ type CodeSegment struct {
 }
 
 func (cs CodeSegment) PrintToScreen() {
-    fmt.Printf("Id:%s; Category:%s; Tags:%s\n", cs.Id, cs.Category, cs.Tags)
-    fmt.Printf("Description: %s\n", cs.Desc)
+    fmt.Printf("ID:%s CATEGORY:%s TAGS:%s\n", cs.Id, cs.Category, cs.Tags)
+    fmt.Printf("DESCRIPTION: %s\n", cs.Desc)
     codeLines := strings.Split(cs.Code, "\n")
     for i, line := range codeLines {
         if i == 0 {
-            fmt.Println("Content:", line)
+            fmt.Println("CONTENT:", line)
         } else {
             fmt.Println("        ", line)
         }
     }
 }
 
+var CodePrefixSpace string = "          "  // len:10
 func (cs CodeSegment) PrintToFile(fpath string) error {
     f, err := os.OpenFile(fpath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
     if err != nil {
@@ -47,7 +47,7 @@ func (cs CodeSegment) PrintToFile(fpath string) error {
         if i == 0 {
             f.WriteString("Content:  " + line + "\n")
         } else {
-            f.WriteString("        " + line+"\n")
+            f.WriteString(CodePrefixSpace + line + "\n")
         }
     }
     return nil
@@ -62,6 +62,7 @@ func (cs *CodeSegment) ReadFromFile(fpath string) error {
 
     isCodeLine := false
     scanner := bufio.NewScanner(f)
+    //var codePrefixSpace string
     for scanner.Scan() {
         line := scanner.Text()
         if strings.HasPrefix(line, "Id:") {
@@ -69,7 +70,7 @@ func (cs *CodeSegment) ReadFromFile(fpath string) error {
         } else if strings.HasPrefix(line, "Category:") {
             cs.Category = strings.TrimSpace(line[len("Category:"):])
         } else if strings.HasPrefix(line, "Tags:") {
-            cs.Tags = strings.TrimSpace(line[len("Tags"):])
+            cs.Tags = strings.TrimSpace(line[len("Tags:"):])
         } else if strings.HasPrefix(line, "Desc:") {
             cs.Desc = strings.TrimSpace(line[len("Desc:"):])
         } else if strings.HasPrefix(line, "Content:") {
@@ -77,7 +78,12 @@ func (cs *CodeSegment) ReadFromFile(fpath string) error {
             isCodeLine = true
         } else {
             if isCodeLine {
-                codeLine := strings.TrimSpace(line)
+                var codeLine string
+                if strings.HasPrefix(line, CodePrefixSpace) {
+                    codeLine = line[len(CodePrefixSpace):]
+                } else {
+                    codeLine = strings.TrimSpace(line)
+                }
                 cs.Code = cs.Code + "\n" + codeLine
             }
         }
@@ -98,7 +104,7 @@ type FileStore struct {
     FilePath string
 }
 
-func (fs *FileStore) toString(cs CodeSegment) string {
+func (fs *FileStore) codeSegmentToStr(cs CodeSegment) string {
     descB64 := base64.StdEncoding.EncodeToString([]byte(cs.Desc))
     contentB64 := base64.StdEncoding.EncodeToString([]byte(cs.Code))
     return cs.Id + "|" + cs.Category + "|" + cs.Tags + "|" + descB64 + "|" + contentB64
@@ -158,9 +164,8 @@ func (fs *FileStore) Add(cs CodeSegment) error {
         cs.Id = id
     }
 
-    line := fs.toString(cs)
-    if fs.isDuplicate(cs) {
-        return errors.New("duplicated id or content.")
+    if err := fs.isDuplicate(cs); err != nil {
+        return err
     }
 
     f, err := os.OpenFile(fs.FilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
@@ -169,6 +174,7 @@ func (fs *FileStore) Add(cs CodeSegment) error {
     }
     defer f.Close()
 
+    line := fs.codeSegmentToStr(cs)
     _, err = f.WriteString(line + "\n")
     return err
 }
@@ -229,10 +235,9 @@ func (fs *FileStore) Append(id string, extraContent string) error {
         return err
     }
 
-    newCs.Code = newCs.Code + "\n" + extraContent
+    newCs.Code = strings.Trim(newCs.Code, "\n") + "\n" + strings.Trim(extraContent, "\n")
     fs.Remove(id)
     return fs.Add(newCs)
-
 }
 
 func (fs *FileStore) Search(category string, tagStr string) []CodeSegment {
@@ -274,16 +279,15 @@ func grepFile(file string, cate string, tags []string) []string {
     f, err := os.Open(file)
     if err != nil {
         fmt.Println(err)
+        return res
     }
     defer f.Close()
     scanner := bufio.NewScanner(f)
     for scanner.Scan() {
         line := scanner.Text()
         flds := strings.Split(line, "|")
-        category := flds[1]
-        category = strings.ToUpper(category)
-        tagStr := flds[2]
-        tagStr = strings.ToUpper(tagStr)
+        category := strings.ToUpper(flds[1])
+        tagStr := strings.ToUpper(flds[2])
         tagStr = category + "," + tagStr
         if categoryMatch(category, cate) && tagsMatch(tagStr, tags) {
             res = append(res, line)
@@ -335,21 +339,29 @@ func (fs *FileStore) Remove(id string) error {
     return nil
 }
 
-func (fs *FileStore) isDuplicate(cs CodeSegment) bool {
-    codeB64 := base64.StdEncoding.EncodeToString([]byte(cs.Code))
-    f, err := os.OpenFile(fs.FilePath, os.O_CREATE|os.O_WRONLY, 0660)
+func (fs *FileStore) isDuplicate(cs CodeSegment) error {
+    //codeB64 := base64.StdEncoding.EncodeToString([]byte(cs.Code))
+    f, err := os.Open(fs.FilePath)
     if err != nil {
         fmt.Println(err)
-        return false
+        return nil
     }
     defer f.Close()
 
     scanner := bufio.NewScanner(f)
     for scanner.Scan() {
-        bsLine := scanner.Bytes()
-        if bytes.Contains(bsLine, []byte(cs.Id)) || bytes.Contains(bsLine, []byte(codeB64)) {
-            return true
+        // bsLine := scanner.Bytes()
+        // if bytes.Contains(bsLine, []byte(cs.Id)) || bytes.Contains(bsLine, []byte(codeB64)) {
+        //     return
+        // }
+        line := scanner.Text()
+        csInFile, _ := fs.strToCodeSegment(line)
+        if csInFile.Code == cs.Code {
+            return errors.New("duplicated code content with id:" + csInFile.Id)
+        }
+        if csInFile.Id == cs.Id {
+            return errors.New("duplicated id generated. category and tags is the same with code segment " + csInFile.Id)
         }
     }
-    return false
+    return nil
 }
