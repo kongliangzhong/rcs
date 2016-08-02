@@ -62,6 +62,7 @@ func (cs *CodeSegment) ReadFromFile(fpath string) error {
     defer f.Close()
 
     isCodeLine := false
+    isDescLine := false
     scanner := bufio.NewScanner(f)
     //var codePrefixSpace string
     for scanner.Scan() {
@@ -74,10 +75,24 @@ func (cs *CodeSegment) ReadFromFile(fpath string) error {
             cs.Tags = strings.TrimSpace(line[len("Tags:"):])
         } else if strings.HasPrefix(line, "Desc:") {
             cs.Desc = strings.TrimSpace(line[len("Desc:"):])
+            isDescLine = true
+            isCodeLine = false
         } else if strings.HasPrefix(line, "Content:") {
             cs.Code = strings.TrimSpace(line[len("Content:"):])
             isCodeLine = true
+            isDescLine = false
         } else {
+            if isDescLine {
+                var descLine string
+                if strings.HasPrefix(line, CodePrefixSpace) {
+                    descLine = line[len(CodePrefixSpace):]
+                } else {
+                    descLine = strings.TrimSpace(line)
+                }
+                cs.Desc = cs.Desc + "\n" + descLine
+                //fmt.Println("cs.Desc:", cs.Desc)
+            }
+
             if isCodeLine {
                 var codeLine string
                 if strings.HasPrefix(line, CodePrefixSpace) {
@@ -86,6 +101,7 @@ func (cs *CodeSegment) ReadFromFile(fpath string) error {
                     codeLine = strings.TrimSpace(line)
                 }
                 cs.Code = cs.Code + "\n" + codeLine
+                //fmt.Println("cs.Code:", cs.Code)
             }
         }
     }
@@ -243,8 +259,8 @@ func (fs *FileStore) Append(id string, extraContent string) error {
 }
 
 func (fs *FileStore) Search(category string, tagStr string) []CodeSegment {
-    tags := strings.Split(tagStr, ",")
-    matchedLines := grepFile(fs.FilePath, category, tags)
+    //tags := strings.Split(tagStr, ",")
+    matchedLines := grepFile(fs.FilePath, category, tagStr)
     matchedCs := []CodeSegment{}
     for _, line := range matchedLines {
         cs, err := fs.strToCodeSegment(line)
@@ -256,27 +272,60 @@ func (fs *FileStore) Search(category string, tagStr string) []CodeSegment {
     return matchedCs
 }
 
-func grepFile(file string, cate string, tags []string) []string {
-    var categoryMatch = func(cateInStore string, c string) bool {
-        if c == "" {
+func grepFile(file string, reqCate string, reqTagStr string) []string {
+    var categoryMatch = func(cateInStore string, cateReq string) bool {
+        if cateReq == "" {
             return true
         }
-        return strings.HasPrefix(cateInStore, c)
+
+        cateInStore = strings.ToUpper(cateInStore)
+        cateReq = strings.ToUpper(cateReq)
+
+        cates := strings.Split(cateInStore, "-")
+        for _, cate := range cates {
+            if cate == cateReq {
+                return true
+            }
+        }
+        return false
     }
 
-    var tagsMatch = func(tagsInStore string, ss []string) bool {
-        if ss == nil || len(ss) == 0 {
+    var tagsMatch = func(tagsInStore string, reqTagStr string) bool {
+        if reqTagStr == "" {
             return true
         }
-        for _, s := range ss {
-            if !strings.Contains(tagsInStore, strings.ToUpper(s)) { // TODO: improve this logic .
+
+        tagsInStore = strings.ToUpper(tagsInStore)
+        reqTagStr = strings.ToUpper(reqTagStr)
+
+        allTagsOfCs := strings.Split(tagsInStore, ",")
+        for _, t := range allTagsOfCs {
+            subTs := strings.Split(t, "-")
+            if len(subTs) > 1 {
+                for _, subTag := range subTs {
+                    allTagsOfCs = append(allTagsOfCs, subTag)
+                }
+            }
+        }
+
+        reqTags := strings.Split(reqTagStr, ",")
+
+        for _, reqTag := range reqTags {
+            isContains := false
+            for _, tagOfCs := range allTagsOfCs {
+                if tagOfCs == reqTag {
+                    isContains = true
+                }
+            }
+
+            if !isContains {
                 return false
             }
         }
         return true
     }
 
-    cate = strings.ToUpper(cate)
+    //cate = strings.ToUpper(cate)
     res := []string{}
     f, err := os.Open(file)
     if err != nil {
@@ -288,10 +337,10 @@ func grepFile(file string, cate string, tags []string) []string {
     for scanner.Scan() {
         line := scanner.Text()
         flds := strings.Split(line, "|")
-        category := strings.ToUpper(flds[1])
-        tagStr := strings.ToUpper(flds[2])
-        tagStr = category + "," + tagStr
-        if categoryMatch(category, cate) && tagsMatch(tagStr, tags) {
+        cateInStore := flds[1]
+        tagStr := flds[2]
+        tagStr = cateInStore + "," + tagStr
+        if categoryMatch(cateInStore, reqCate) && tagsMatch(tagStr, reqTagStr) {
             res = append(res, line)
         }
     }
