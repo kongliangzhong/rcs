@@ -30,7 +30,7 @@ func (cs CodeSegment) PrintToScreen() {
     }
 }
 
-var CodePrefixSpace string = "          "  // len:10
+var CodePrefixSpace string = "          " // len:10
 func (cs CodeSegment) PrintToFile(fpath string) error {
     f, err := os.OpenFile(fpath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0660)
     if err != nil {
@@ -115,6 +115,17 @@ type Store interface {
     Search(category string, tagStr string) []CodeSegment
     Remove(id string) error
     GetById(id string) (CodeSegment, error)
+    GetStats() RcsStats
+}
+
+type RcsStats struct {
+    TotalRcsSize int
+    AllCates     []string
+    AllTags      []string
+    CateTagsMap  map[string][]string
+    CateNumMap   map[string]int
+    TagCatesMap  map[string][]string
+    TagNumMap    map[string]int
 }
 
 type FileStore struct {
@@ -162,13 +173,13 @@ func (fs *FileStore) genId(cs CodeSegment) (id string, err error) {
         return
     }
 
-    if cs.Category == "" || cs.Tags == "" {
-        err = errors.New("generate id failed: category or tags is empty")
+    if cs.Category == "" && cs.Tags == "" {
+        err = errors.New("generate id failed: category and tags both empty")
     }
 
     idBytes := sha1.Sum([]byte(cs.Category + cs.Tags))
     id = base64.StdEncoding.EncodeToString(idBytes[:])
-    id = id[:len(id)-1]  //
+    id = id[:len(id)-1] //
     return
 }
 
@@ -415,4 +426,65 @@ func (fs *FileStore) isDuplicate(cs CodeSegment) error {
         }
     }
     return nil
+}
+
+func (fs *FileStore) GetStats() RcsStats {
+    stats := RcsStats{
+        AllCates:    []string{},
+        AllTags:     []string{},
+        CateTagsMap: map[string][]string{},
+        CateNumMap:  map[string]int{},
+        TagCatesMap: map[string][]string{},
+        TagNumMap:   map[string]int{},
+    }
+
+    f, err := os.Open(fs.FilePath)
+    if err != nil {
+        fmt.Println(err)
+        return stats
+    }
+
+    scanner := bufio.NewScanner(f)
+    for scanner.Scan() {
+        line := scanner.Text()
+        rcs, err := fs.strToCodeSegment(line)
+        if err != nil {
+            fmt.Println(err)
+            continue
+        }
+        stats.TotalRcsSize ++
+        cate := rcs.Category
+        tagStr := rcs.Tags
+        tagsArr := strings.Split(tagStr, ",")
+
+        cateSize := stats.CateNumMap[cate]
+        stats.CateNumMap[cate] = cateSize + 1
+
+        if !ArrContains(stats.AllCates, cate) {
+            stats.AllCates = append(stats.AllCates, cate)
+        }
+
+        for _, t := range tagsArr {
+            if !ArrContains(stats.AllTags, t) {
+                stats.AllTags = append(stats.AllTags, t)
+            }
+
+            tagsOfCate := stats.CateTagsMap[cate]
+            if !ArrContains(tagsOfCate, t) {
+                tagsOfCate = append(tagsOfCate, t)
+                stats.CateTagsMap[cate] = tagsOfCate
+            }
+
+            catesOfTag := stats.TagCatesMap[t]
+            if !ArrContains(catesOfTag, cate) {
+                catesOfTag = append(catesOfTag, cate)
+                stats.TagCatesMap[t] = catesOfTag
+            }
+
+            tagSize := stats.TagNumMap[t]
+            stats.TagNumMap[t] = tagSize + 1
+        }
+    }
+
+    return stats
 }

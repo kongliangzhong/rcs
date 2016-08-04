@@ -33,9 +33,9 @@ func main() {
         ids := os.Args[2:]
         op.Merge(ids...)
     case "list-c":
-        //listc()
+        op.ListCates()
     case "list-t":
-        //listt()
+        op.ListTags()
     case "search":
         codeSeg := parseArgs(os.Args)
         op.Search(codeSeg.Category, codeSeg.Tags)

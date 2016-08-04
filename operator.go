@@ -8,6 +8,7 @@ import (
     "os/exec"
     "strings"
     "github.com/satori/go.uuid"
+    "strconv"
 )
 
 const resultDelimiter = "--------------------------------------------------------"
@@ -199,4 +200,66 @@ func (op *Operator) Edit(id string) {
     cs.Id = ""
     op.Remove(oldId)
     op.Add(cs)
+}
+
+func (op *Operator) ListCates() {
+    stats := op.store.GetStats()
+    head := []string{"INDEX   ", "CATEGORY        ", "RCS-NUM     ", "TAGS"}
+    index := 0
+    format := fmt.Sprintf("%%-%ds%%-%ds%%-%ds%%-%ds\n", len(head[0]), len(head[1]), len(head[2]), len(head[3]))
+    formatNewLine := fmt.Sprintf("%%%ds\n", len(head[0]) + len(head[1]) + len(head[2]) + len(head[3]))
+    fmt.Println("formatNewLine:", formatNewLine)
+    fmt.Printf("%s%s%s%s\n", head[0], head[1], head[2], head[3])
+
+    lineMax := 50
+    for cate, tags := range stats.CateTagsMap {
+        index ++
+        num := stats.CateNumMap[cate]
+        tagLines := []string{}
+        line := ""
+        for i, tag := range tags {
+            if line == "" {
+                line = tag
+            } else {
+                line = line + "," + tag
+            }
+
+            if len(line) > lineMax {
+                if i != len(tags) - 1 {
+                    line = line + ","
+                }
+                tagLines = append(tagLines, line)
+                line = ""
+            } else {
+                if i == len(tags) - 1 {
+                    if strings.HasSuffix(line, ",") {
+                        line = line[:len(line)-1]
+                    }
+                    tagLines = append(tagLines, line)
+                }
+            }
+        }
+
+        for i, tagLine := range tagLines {
+            if i == 0 {
+                fmt.Printf(format, strconv.Itoa(index), cate, strconv.Itoa(num), tagLine)
+            } else {
+                fmt.Printf(formatNewLine, tagLine)
+            }
+        }
+
+    }
+}
+
+func (op *Operator) ListTags() {
+    stats := op.store.GetStats()
+    head := []string{"INDEX    ", "TAG                    ", "RCS-NUM ", "CATEGORIES    "}
+    index := 0
+    format := fmt.Sprintf("%%-%ds%%-%ds%%-%ds%%-%ds\n", len(head[0]), len(head[1]), len(head[2]), len(head[3]))
+    fmt.Printf("%s%s%s%s\n", head[0], head[1], head[2], head[3])
+    for tag, cates := range stats.TagCatesMap {
+        index ++
+        num := stats.TagNumMap[tag]
+        fmt.Printf(format, strconv.Itoa(index), tag, strconv.Itoa(num), strings.Join(cates, ","))
+    }
 }
