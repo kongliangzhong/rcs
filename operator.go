@@ -207,9 +207,7 @@ func (op *Operator) ListCates() {
     head := []string{"INDEX   ", "CATEGORY        ", "RCS-NUM     ", "TAGS"}
     index := 0
     format := fmt.Sprintf("%%-%ds%%-%ds%%-%ds%%-%ds\n", len(head[0]), len(head[1]), len(head[2]), len(head[3]))
-    formatNewLine := fmt.Sprintf("%%%ds\n", len(head[0]) + len(head[1]) + len(head[2]) + len(head[3]))
-    fmt.Println("formatNewLine:", formatNewLine)
-    fmt.Printf("%s%s%s%s\n", head[0], head[1], head[2], head[3])
+    //fmt.Printf("%s%s%s%s\n", head[0], head[1], head[2], head[3])
 
     lineMax := 50
     for cate, tags := range stats.CateTagsMap {
@@ -244,6 +242,7 @@ func (op *Operator) ListCates() {
             if i == 0 {
                 fmt.Printf(format, strconv.Itoa(index), cate, strconv.Itoa(num), tagLine)
             } else {
+                formatNewLine := fmt.Sprintf("%%%ds\n", len(head[0]) + len(head[1]) + len(head[2]) + len(tagLine))
                 fmt.Printf(formatNewLine, tagLine)
             }
         }
