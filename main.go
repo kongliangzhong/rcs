@@ -3,13 +3,31 @@ package main
 import (
     "fmt"
     "os"
+    "os/user"
     "strings"
 )
 
-const defaultCodeBase = "/opt/rcs-codebase/"
+var defaultCodeBase = ".rcs/data/"
 const segFileName = "segfile.rcs"
 
-var segFilePath = defaultCodeBase + segFileName
+var segFilePath = ""
+
+func init() {
+    usr, err := user.Current()
+    if err != nil {
+        panic(err)
+    }
+
+    defaultCodeBase = usr.HomeDir + "/" + defaultCodeBase
+    segFilePath = defaultCodeBase + segFileName
+    _, err = os.Stat(defaultCodeBase)
+    if err != nil && os.IsNotExist(err) {
+        err = os.MkdirAll(defaultCodeBase, 0770)
+        if err != nil {
+            panic(err)
+        }
+    }
+}
 
 // keep things simple: category should be one world only. tags can have multiple world, seperated by comma(,).
 func main() {

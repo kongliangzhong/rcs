@@ -402,20 +402,14 @@ func (fs *FileStore) Remove(id string) error {
 }
 
 func (fs *FileStore) isDuplicate(cs CodeSegment) error {
-    //codeB64 := base64.StdEncoding.EncodeToString([]byte(cs.Code))
     f, err := os.Open(fs.FilePath)
     if err != nil {
-        fmt.Println(err)
         return nil
     }
     defer f.Close()
 
     scanner := bufio.NewScanner(f)
     for scanner.Scan() {
-        // bsLine := scanner.Bytes()
-        // if bytes.Contains(bsLine, []byte(cs.Id)) || bytes.Contains(bsLine, []byte(codeB64)) {
-        //     return
-        // }
         line := scanner.Text()
         csInFile, _ := fs.strToCodeSegment(line)
         if csInFile.Code == cs.Code {
